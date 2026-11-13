@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+guncel_ilanlar.db*
+ogrenme_havuzu.db*
+asistan.log
+model/
+.env
+api_anahtarlari.json
