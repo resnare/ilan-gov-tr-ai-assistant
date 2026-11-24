@@ -10,16 +10,16 @@ Sistem üç ayaktan oluşur:
   1) OTONOM KAZIYICI (Selenium + SQLite)
      Arka planda (threading) 10 dakikada bir ilan.gov.tr "Kamu-Akademik Personel"
      kategorisini tarar, yeni ilanların detay sayfalarına girer, kadro tablolarını
-     satır satır ayrıştırır ve CANLI veritabanına (guncel_ilanlar.db) yazar.
+     satır satır ayrıştırır ve CANLI veritabanına (live_ads.db) yazar.
 
   2) PYTORCH LSTM BEYNİ (çoklu görev / multi-task)
-     egitim_verisi.csv (eski ilanlardan üretilmiş, canlı veriden bağımsız) ile eğitilir.
+     training_data.csv (eski ilanlardan üretilmiş, canlı veriden bağımsız) ile eğitilir.
      Tek bir gövde (Embedding + çift yönlü LSTM) ve iki çıkış başı vardır:
         - İş Tipi : argor / ogrgor / ogruye / idari / ilan_disi
         - Alan    : muhendislik / fen_bilimleri / saglik / sosyal_bilimler /
                     egitim / sanat_mimarlik
      Model yeni linklerden de öğrenir: canlı ilanlardan güvenilir etiketli kadrolar
-     AYRI bir öğrenme havuzuna (ogrenme_havuzu.db) kopyalanır ve model periyodik
+     AYRI bir öğrenme havuzuna (learning_pool.db) kopyalanır ve model periyodik
      olarak ince ayar (fine-tune) ile güncellenir. Yeni model, sabit test kümesinde
      eskisinden kötü değilse devreye alınır (champion / challenger).
 
@@ -32,11 +32,11 @@ Sistem üç ayaktan oluşur:
 Kesin kurallar (koda gömülüdür):
   * Katı alt filtre: LLM'in çıkardığı "spesifik_kelime", kadro metninde metin bazlı
     (string contains) aranır. "bilgisayar" arayana "inşaat" kadrosu gösterilmez.
-  * Veri ayrımı: egitim_verisi.csv + ogrenme_havuzu.db  <->  guncel_ilanlar.db
+  * Veri ayrımı: training_data.csv + learning_pool.db  <->  live_ads.db
     birbirine asla karışmaz. Kullanıcıya yalnızca canlı DB'deki linkler verilir.
   * 7 gün kuralı: yayın tarihi 7 günden eski ilan kimseye gösterilmez; bakım
     iş parçacığı bunları canlı DB'den silip öğrenme havuzuna arşivler.
-  * Sıfır print hatası: tüm hatalar asistan.log dosyasına yazılır, ekrana asla.
+  * Sıfır print hatası: tüm hatalar assistant.log dosyasına yazılır, ekrana asla.
   * Maksimum 5'erli gösterim, "devam" ile sonraki 5.
 
 Kullanım:
@@ -44,7 +44,7 @@ Kullanım:
   python main.py --anahtar          # ücretsiz Gemini ve/veya Groq anahtarını gir (ilk açılışta da sorulur)
   (alternatif: GEMINI_API_KEY / GROQ_API_KEY ortam değişkenleri)
 
-  python main.py --veri-hazirla     # akademik_ilanlar_temiz.json + ilan_veritabani.db -> egitim_verisi.csv
+  python main.py --veri-hazirla     # academic_ads_clean.json + legacy_scrape.db -> training_data.csv
   python main.py --egit             # modeli eğitir, metrik + grafikleri report_outputs/ altına yazar
   python main.py --tek-tarama       # tek bir kazıma turu (test için)
   python main.py                    # tam sistem: kazıyıcı + öğrenme + sohbet
@@ -100,14 +100,14 @@ os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
 
 # ---- Dosya yolları ----
 KLASOR = os.path.dirname(os.path.abspath(__file__))
-EGITIM_JSON = os.path.join(KLASOR, "data", "akademik_ilanlar_temiz.json")   # eski akademik ilanlar (tablolu)
-ESKI_DB = os.path.join(KLASOR, "data", "ilan_veritabani.db")                # eski kazıma (ihale ağırlıklı)
-EGITIM_CSV = os.path.join(KLASOR, "data", "egitim_verisi.csv")              # MODELİN EĞİTİM VERİSİ
-CANLI_DB = os.path.join(KLASOR, "guncel_ilanlar.db")                # KULLANICIYA GÖSTERİLEN CANLI VERİ
-HAVUZ_DB = os.path.join(KLASOR, "ogrenme_havuzu.db")                # yeni linklerden öğrenme havuzu
+EGITIM_JSON = os.path.join(KLASOR, "data", "academic_ads_clean.json")   # eski akademik ilanlar (tablolu)
+ESKI_DB = os.path.join(KLASOR, "data", "legacy_scrape.db")                # eski kazıma (ihale ağırlıklı)
+EGITIM_CSV = os.path.join(KLASOR, "data", "training_data.csv")              # MODELİN EĞİTİM VERİSİ
+CANLI_DB = os.path.join(KLASOR, "live_ads.db")                # KULLANICIYA GÖSTERİLEN CANLI VERİ
+HAVUZ_DB = os.path.join(KLASOR, "learning_pool.db")                # yeni linklerden öğrenme havuzu
 MODEL_KLASORU = os.path.join(KLASOR, "model")
 RAPOR_KLASORU = os.path.join(KLASOR, "report_outputs")
-LOG_DOSYASI = os.path.join(KLASOR, "asistan.log")
+LOG_DOSYASI = os.path.join(KLASOR, "assistant.log")
 
 # ---- Zamanlama ve iş kuralları ----
 KAZIMA_ARALIGI_SN = 10 * 60          # 10 dakika
@@ -122,11 +122,11 @@ LISTE_URL = "https://www.ilan.gov.tr/ilan/kategori/8/kamu-akademik-personel?ats=
 SITE = "https://www.ilan.gov.tr"
 
 # ---- LLM ayarları (iki ÜCRETSİZ sağlayıcı: önce Gemini, kota/bağlantı sorununda Groq) ----
-# Anahtarlar koda GÖMÜLMEZ. Sıra: ortam değişkeni -> api_anahtarlari.json (ilk açılışta sihirbazla
+# Anahtarlar koda GÖMÜLMEZ. Sıra: ortam değişkeni -> api_keys.json (ilk açılışta sihirbazla
 # oluşturulur, .gitignore'dadır). Her kullanıcı kendi ücretsiz anahtarını kullanır; kimseden ücret alınmaz.
 #   Gemini : https://aistudio.google.com  -> "Get API key"  (faturalandırma AÇMAYIN = ücretsiz katman)
 #   Groq   : https://console.groq.com/keys                 (kart bilgisi istemez)
-ANAHTAR_DOSYASI = os.path.join(KLASOR, "api_anahtarlari.json")
+ANAHTAR_DOSYASI = os.path.join(KLASOR, "api_keys.json")
 GEMINI_MODELLERI = [m for m in [os.environ.get("GEMINI_MODEL", "").strip(),
                                 "gemini-3.5-flash", "gemini-2.5-flash"] if m]
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -361,15 +361,15 @@ def tablolardan_kadrolar(tablolar):
 
 
 # ==============================================================================
-# BÖLÜM 3: EĞİTİM VERİSİNİN HAZIRLANMASI (egitim_verisi.csv)
+# BÖLÜM 3: EĞİTİM VERİSİNİN HAZIRLANMASI (training_data.csv)
 # ==============================================================================
 ILAN_BASINA_MAKS = 40
 
 
 def egitim_verisi_hazirla(json_yolu=EGITIM_JSON, eski_db_yolu=ESKI_DB, cikti=EGITIM_CSV):
     """Eski verilerden etiketli eğitim kümesi üretir. CANLI VERİTABANINA HİÇ DOKUNMAZ.
-      * akademik_ilanlar_temiz.json -> kadro düzeyinde örnekler (argor/ogrgor/ogruye + alan)
-      * ilan_veritabani.db          -> eski kazıyıcının yanlışlıkla topladığı ihale başlıkları
+      * academic_ads_clean.json -> kadro düzeyinde örnekler (argor/ogrgor/ogruye + alan)
+      * legacy_scrape.db          -> eski kazıyıcının yanlışlıkla topladığı ihale başlıkları
                                        = 'ilan_disi' (personel ilanı olmayan) negatif sınıfı."""
     satirlar = []
     if os.path.exists(json_yolu):
@@ -618,18 +618,18 @@ def modeli_egit(df_egitim, df_dogr, sozluk=None, baslangic_modeli=None, epok=MAK
 
 def model_kaydet(model, sozluk, meta=None, klasor=MODEL_KLASORU):
     os.makedirs(klasor, exist_ok=True)
-    torch.save(model.state_dict(), os.path.join(klasor, "ilan_lstm.pt"))
-    with open(os.path.join(klasor, "sozluk.json"), "w", encoding="utf-8") as f:
+    torch.save(model.state_dict(), os.path.join(klasor, "ad_lstm.pt"))
+    with open(os.path.join(klasor, "vocab.json"), "w", encoding="utf-8") as f:
         json.dump(sozluk.k2i, f, ensure_ascii=False)
     with open(os.path.join(klasor, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta or {}, f, ensure_ascii=False, indent=2)
 
 
 def model_yukle(klasor=MODEL_KLASORU):
-    with open(os.path.join(klasor, "sozluk.json"), encoding="utf-8") as f:
+    with open(os.path.join(klasor, "vocab.json"), encoding="utf-8") as f:
         sozluk = Sozluk(json.load(f))
     model = IlanLSTM(len(sozluk))
-    model.load_state_dict(torch.load(os.path.join(klasor, "ilan_lstm.pt"), map_location="cpu"))
+    model.load_state_dict(torch.load(os.path.join(klasor, "ad_lstm.pt"), map_location="cpu"))
     model.eval()
     meta = {}
     if os.path.exists(os.path.join(klasor, "meta.json")):
@@ -895,7 +895,7 @@ def havuza_ekle(kayitlar):
 # BÖLÜM 6: OTONOM KAZIYICI (SELENIUM)
 # ==============================================================================
 # NOT: Eski kodlarda kullanılan ".../kategori/9/personel-alimi-akademik-kadro..." adresi
-# sitede aslında "İhale Duyuruları" kategorisini açıyor; bu yüzden eski ilan_veritabani.db
+# sitede aslında "İhale Duyuruları" kategorisini açıyor; bu yüzden eski legacy_scrape.db
 # neredeyse tamamen ihale ilanlarıyla dolmuştu. Doğru kategori: kategori/8/kamu-akademik-personel.
 
 def tarayici_ac():
@@ -1093,7 +1093,7 @@ def kazima_dongusu(yonetici):
 
 def surekli_ogrenme_turu(yonetici):
     """Champion/Challenger ince ayar:
-      1) egitim_verisi.csv (eğitim+doğrulama kısmı) + öğrenme havuzu birleştirilir,
+      1) training_data.csv (eğitim+doğrulama kısmı) + öğrenme havuzu birleştirilir,
       2) sözlük yeni kelimelerle genişletilir, mevcut ağırlıklardan başlanarak birkaç epok eğitilir,
       3) ORİJİNAL SABİT TEST kümesinde yeni model eskisinden kötü değilse kaydedilip devreye alınır."""
     try:
@@ -1222,7 +1222,7 @@ hata kodu veya İngilizce kullanmazsın. Sana verilen bilgilerin DIŞINDA hiçbi
 
 
 def anahtarlari_yukle():
-    """API anahtarlarını önce ortam değişkenlerinden, yoksa yerel api_anahtarlari.json'dan okur."""
+    """API anahtarlarını önce ortam değişkenlerinden, yoksa yerel api_keys.json'dan okur."""
     anahtarlar = {"gemini": "", "groq": ""}
     try:
         if os.path.exists(ANAHTAR_DOSYASI):
@@ -1340,7 +1340,7 @@ def anahtar_sihirbazi(zorla=False):
     print("\n  🔑 Daha doğal sohbet için ücretsiz bir yapay zekâ anahtarı ekleyebilirsin (isteğe bağlı).")
     print("     • Gemini: https://aistudio.google.com  →  'Get API key'  (faturalandırma açma, ücretsiz kalır)")
     print("     • Groq  : https://console.groq.com/keys  (kart bilgisi istemez)")
-    print("     Anahtar yalnızca bu bilgisayarda, api_anahtarlari.json dosyasında saklanır. Geçmek için Enter.\n")
+    print("     Anahtar yalnızca bu bilgisayarda, api_keys.json dosyasında saklanır. Geçmek için Enter.\n")
     for ad, etiket in (("gemini", "Gemini anahtarı"), ("groq", "Groq anahtarı")):
         try:
             girdi = input(f"  {etiket}: ").strip()
@@ -1681,7 +1681,7 @@ def sohbet_dongusu(llm):
 # ==============================================================================
 def model_hazirla():
     """Kaydedilmiş model varsa yükler; yoksa eğitim verisini hazırlayıp eğitir."""
-    if os.path.exists(os.path.join(MODEL_KLASORU, "ilan_lstm.pt")):
+    if os.path.exists(os.path.join(MODEL_KLASORU, "ad_lstm.pt")):
         return model_yukle()
     print("  İlk çalıştırma: eğitim verisi hazırlanıyor ve LSTM modeli eğitiliyor (birkaç dakika sürebilir)...")
     return egitim_hattini_calistir(sessiz=True)
@@ -1689,7 +1689,7 @@ def model_hazirla():
 
 def main():
     ap = argparse.ArgumentParser(description="ilan.gov.tr doğal dil destekli otonom asistan")
-    ap.add_argument("--veri-hazirla", action="store_true", help="egitim_verisi.csv dosyasını üret")
+    ap.add_argument("--veri-hazirla", action="store_true", help="training_data.csv dosyasını üret")
     ap.add_argument("--egit", action="store_true", help="modeli eğit, metrik ve grafikleri üret")
     ap.add_argument("--tek-tarama", action="store_true", help="tek bir kazıma turu yap ve çık")
     ap.add_argument("--anahtar", action="store_true", help="ücretsiz Gemini / Groq anahtarlarını gir veya değiştir")
@@ -1702,7 +1702,7 @@ def main():
 
     if arg.veri_hazirla:
         df = egitim_verisi_hazirla()
-        print(f"egitim_verisi.csv hazır: {len(df)} örnek")
+        print(f"training_data.csv hazır: {len(df)} örnek")
         print(df["etiket_is_tipi"].value_counts().to_string())
         return
     if arg.egit:
@@ -1720,8 +1720,8 @@ def main():
         model, sozluk, meta = model_hazirla()
     except Exception as e:
         LOG.exception("Model hazırlanamadı: %s", e)
-        print("  Asistan şu an başlatılamadı. Lütfen 'data/akademik_ilanlar_temiz.json' dosyasının yerinde "
-              "olduğundan emin olup tekrar dene. Ayrıntılar asistan.log dosyasında.")
+        print("  Asistan şu an başlatılamadı. Lütfen 'data/academic_ads_clean.json' dosyasının yerinde "
+              "olduğundan emin olup tekrar dene. Ayrıntılar assistant.log dosyasında.")
         return
     yonetici = ModelYoneticisi(model, sozluk, meta)
 

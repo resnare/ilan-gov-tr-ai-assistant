@@ -277,6 +277,6 @@ if __name__ == "__main__":
     out["guven_alan"] = softmax(la).max(1)
     out.to_csv(M.os.path.join(M.RAPOR_KLASORU, "test_predictions.csv"), index=False)
     np.savez(M.os.path.join(M.RAPOR_KLASORU, "numpy_model.npz"), **model.p)
-    with open(M.os.path.join(M.RAPOR_KLASORU, "sozluk.json"), "w", encoding="utf-8") as f:
+    with open(M.os.path.join(M.RAPOR_KLASORU, "vocab.json"), "w", encoding="utf-8") as f:
         json.dump(s.k2i, f, ensure_ascii=False)
     print(json.dumps(sonuc["temel_model"], indent=1))

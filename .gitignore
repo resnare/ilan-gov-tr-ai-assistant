@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
-guncel_ilanlar.db*
-ogrenme_havuzu.db*
-asistan.log
+live_ads.db*
+learning_pool.db*
+assistant.log
 model/
 .env
-api_anahtarlari.json
+api_keys.json
